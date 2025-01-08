@@ -1,0 +1,198 @@
+name: Setup Web Server for MERN Application with Docker
+hosts: web
+become: true
+tasks:
+  # Update package list
+  - name: Update apt package list
+    apt:
+      update_cache: yes
+    register: update_apt_output
+
+  - name: Debug apt update output
+    debug:
+      var: update_apt_output
+
+  # Install necessary packages
+  - name: Install required packages (Node.js, NPM, Git, and Docker dependencies)
+    apt:
+      name:
+        - nodejs
+        - npm
+        - git
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - software-properties-common
+      state: present
+    register: install_packages_output
+
+  - name: Debug install packages output
+    debug:
+      var: install_packages_output
+
+  # Add Docker GPG key
+  - name: Add Docker GPG key
+    apt_key:
+      url: https://download.docker.com/linux/ubuntu/gpg
+      state: present
+    register: add_docker_key_output
+
+  - name: Debug Docker GPG key output
+    debug:
+      var: add_docker_key_output
+
+  # Add Docker repository
+  - name: Add Docker repository
+    shell: |
+      echo "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+    register: add_docker_repo_output
+
+  - name: Debug Docker repository addition output
+    debug:
+      var: add_docker_repo_output
+
+  # Update apt package list after adding Docker repo
+  - name: Update apt package list after adding Docker repo
+    apt:
+      update_cache: yes
+    register: update_apt_after_docker_repo_output
+
+  - name: Debug apt update after Docker repo output
+    debug:
+      var: update_apt_after_docker_repo_output
+
+  # Install Docker
+  - name: Install Docker CE
+    apt:
+      name:
+        - docker-ce
+      state: present
+    register: install_docker_output
+
+  - name: Debug Docker installation output
+    debug:
+      var: install_docker_output
+
+  # Start and enable Docker service
+  - name: Start and enable Docker service
+    service:
+      name: docker
+      state: started
+      enabled: true
+    register: docker_service_output
+
+  - name: Debug Docker service start output
+    debug:
+      var: docker_service_output
+
+  # Clone the TravelMemory repository
+  - name: Clone the MERN Application repository
+    git:
+      repo: "https://github.com/UnpredictablePrashant/TravelMemory.git"
+      dest: /opt/TravelMemory
+      clone: yes
+      update: yes
+      force: yes
+    register: clone_repo_output
+
+  - name: Debug clone repo output
+    debug:
+      var: clone_repo_output
+
+  # Remove node_modules directory
+  - name: Remove node_modules directory
+    file:
+      path: /opt/TravelMemory/frontend/node_modules
+      state: absent
+    register: remove_node_modules_output
+
+  - name: Debug node_modules cleanup output
+    debug:
+      var: remove_node_modules_output
+
+  # Create Dockerfile
+  - name: Create Dockerfile for the frontend
+    copy:
+      dest: /opt/TravelMemory/frontend/Dockerfile
+      content: |
+        FROM node:18-slim AS build
+        WORKDIR /app/frontend
+        COPY . .
+        RUN npm install
+        RUN npm run build
+
+        FROM nginx:stable-alpine
+        COPY --from=build /app/frontend/build /usr/share/nginx/html
+        COPY nginx.conf /etc/nginx/nginx.conf
+
+        # Expose port 80
+        EXPOSE 80
+
+        # Start Nginx server
+        CMD ["nginx", "-g", "daemon off;"]
+    register: dockerfile_creation_output
+
+  - name: Debug Dockerfile creation output
+    debug:
+      var: dockerfile_creation_output
+
+  # Create nginx.conf
+  - name: Create Nginx configuration file
+    copy:
+      dest: /opt/TravelMemory/frontend/nginx.conf
+      content: |
+        events {
+            worker_connections 1024;
+        }
+
+        http {
+            server {
+                listen 80;
+                server_name localhost;
+
+                location / {
+                    root /usr/share/nginx/html;
+                    index index.html;
+                    try_files $uri /index.html;
+                }
+
+                # Optionally, you can add more configurations if needed
+                # such as for logging, redirects, or error handling.
+            }
+        }
+    register: nginx_conf_creation_output
+
+  - name: Debug Nginx conf creation output
+    debug:
+      var: nginx_conf_creation_output
+
+  # Build Docker image
+  - name: Build Docker image for TravelMemory frontend
+    command: docker build -t travelmemory-frontend /opt/TravelMemory/frontend
+    register: build_image_output
+
+  - name: Debug Docker image build output
+    debug:
+      var: build_image_output
+
+  # Run Docker container with environment variable
+  - name: Run Docker container for TravelMemory frontend with backend URL
+    command: |
+      docker run -d --name travelmemory-frontend \
+        -p 80:80 \
+        -e REACT_APP_BACKEND_URL=http://10.1.0.252:3001 \
+        travelmemory-frontend
+    register: run_container_output
+
+  - name: Debug Docker container run output
+    debug:
+      var: run_container_output
+
+  # Ensure the Docker container is running
+  - name: Ensure TravelMemory container is running
+    command: docker ps
+    register: docker_ps_output
+
+  - name: Debug Docker container status
+    debug:
+      var: docker_ps_output

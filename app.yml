@@ -1,0 +1,105 @@
+- name: Setup Backend Server for TravelMemory Application with Docker
+  hosts: app
+  become: true
+  tasks:
+    # Update package list
+    - name: Update apt package list
+      apt:
+        update_cache: yes
+
+    # Install necessary packages
+    - name: Install required packages (Node.js, NPM, Git, and Docker dependencies)
+      apt:
+        name:
+          - nodejs
+          - npm
+          - git
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+
+    # Add Docker GPG key
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    # Add Docker repository
+    - name: Add Docker repository
+      shell: |
+        echo "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+
+    # Update apt package list after adding Docker repo
+    - name: Update apt package list after adding Docker repo
+      apt:
+        update_cache: yes
+
+    # Install Docker
+    - name: Install Docker CE
+      apt:
+        name:
+          - docker-ce
+        state: present
+
+    # Start and enable Docker service
+    - name: Start and enable Docker service
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    # Clone the TravelMemory repository
+    - name: Clone the TravelMemory repository
+      git:
+        repo: "https://github.com/UnpredictablePrashant/TravelMemory.git"
+        dest: /opt/TravelMemory
+        clone: yes
+        update: yes
+        force: yes
+
+    # Remove node_modules directory in backend
+    - name: Remove node_modules directory
+      file:
+        path: /opt/TravelMemory/backend/node_modules
+        state: absent
+
+    # Create .env file for the backend
+    - name: Create .env file for TravelMemory backend
+      copy:
+        dest: /opt/TravelMemory/backend/.env
+        content: |
+          MONGO_URI='mongodb+srv://mongodb+srv://ramasrinivas495:rahul2587815@ramcluster.elv5tgp.mongodb.net/tmram_batch7'
+          PORT=3001
+
+    # Create Dockerfile for the backend
+    - name: Create Dockerfile for the backend
+      copy:
+        dest: /opt/TravelMemory/backend/Dockerfile
+        content: |
+          FROM node:18-slim
+          WORKDIR /app/backend
+          COPY package.json ./
+          RUN npm install
+          COPY . ./
+          EXPOSE 3001
+          CMD ["node", "index.js"]
+
+    # Build Docker image for backend
+    - name: Build Docker image for TravelMemory backend
+      command: docker build -t travelmemory-backend /opt/TravelMemory/backend
+
+    # Run Docker container for backend
+    - name: Run Docker container for TravelMemory backend
+      command: docker run -d --name travelmemory-backend -p 3001:3001 travelmemory-backend
+
+    # Ensure the Docker container is running
+    - name: Ensure TravelMemory backend container is running
+      command: docker ps
+
+    # Delete .env file after container runs
+    - name: Delete .env file for security
+      file:
+        path: /opt/TravelMemory/backend/.env
+        state: absent
